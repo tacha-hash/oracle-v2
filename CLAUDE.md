@@ -248,7 +248,7 @@ This separation ensures a clear distinction between context dumps and actionable
 **CRITICAL**: The AI Diary and Honest Feedback sections are MANDATORY. These provide essential context and continuous improvement insights. Never skip these sections.
 
 1.  **Gather Session Data**: `git diff --name-only main...HEAD`, `git log --oneline main...HEAD`, and session timestamps.
-2.  **Create Retrospective Document**: Use the template to create a markdown file in `retrospectives/` with ALL required sections, especially:
+2.  **Create Retrospective Document**: Use the template to create a markdown file in `ψ/memory/retrospectives/YYYY-MM/DD/HH.MM_slug.md` with ALL required sections, especially:
     - **AI Diary**: First-person narrative of the session experience
     - **Honest Feedback**: Frank assessment of what worked and what didn't
 3.  **Validate Completeness**: Use the retrospective validation checklist to ensure no sections are skipped.
