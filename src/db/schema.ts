@@ -24,12 +24,15 @@ export const oracleDocuments = sqliteTable('oracle_documents', {
   origin: text('origin'),                   // 'mother' | 'arthur' | 'volt' | 'human' | null (legacy)
   project: text('project'),                 // ghq-style: 'github.com/laris-co/oracle-v2'
   createdBy: text('created_by'),            // 'indexer' | 'oracle_learn' | 'manual'
+  // Knowledge category for graph visualization
+  category: text('category'),               // 'philosophy' | 'technical' | 'ai-tools' | 'identity' | 'projects' | 'retrospective' | 'methodology' | 'ethics'
 }, (table) => [
   index('idx_source').on(table.sourceFile),
   index('idx_type').on(table.type),
   index('idx_superseded').on(table.supersededBy),
   index('idx_origin').on(table.origin),
   index('idx_project').on(table.project),
+  index('idx_category').on(table.category),
 ]);
 
 // Indexing status tracking

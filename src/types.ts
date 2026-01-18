@@ -5,6 +5,17 @@
 
 export type OracleDocumentType = 'principle' | 'pattern' | 'learning' | 'retro';
 
+// Knowledge category for graph visualization
+export type KnowledgeCategory =
+  | 'philosophy'    // ปรัชญา
+  | 'technical'     // เทคนิค
+  | 'ai-tools'      // เครื่องมือ AI
+  | 'identity'      // ตัวตน
+  | 'projects'      // โปรเจค
+  | 'retrospective' // บันทึก
+  | 'methodology'   // วิธีทำงาน
+  | 'ethics';       // จริยธรรม
+
 /**
  * Granular document stored in vector DB
  * Following claude-mem's pattern of splitting large documents into smaller chunks
@@ -15,6 +26,7 @@ export interface OracleDocument {
   source_file: string;  // Relative path from repo root
   content: string;      // The actual text to embed
   concepts: string[];   // Tags for filtering: ['trust', 'patterns', 'mirror']
+  category?: KnowledgeCategory; // Auto-classified for graph visualization
   created_at: number;   // Unix timestamp
   updated_at: number;   // Unix timestamp
 }

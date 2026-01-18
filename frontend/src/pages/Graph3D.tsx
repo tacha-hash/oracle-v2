@@ -8,6 +8,7 @@ import styles from './Graph3D.module.css';
 interface Node {
   id: string;
   type: string;
+  category: string;
   label: string;
   concepts?: string[];
   cluster?: number;
@@ -20,10 +21,40 @@ interface Link {
   target: string;
 }
 
-const TYPE_COLORS: Record<string, number> = {
-  principle: 0xa78bfa,  // Purple
-  learning: 0x4ade80,   // Green
-  retro: 0x38bdf8,      // Cyan/sky blue (more distinct from purple)
+// Category colors for knowledge graph visualization (8 categories) - hex numbers for Three.js
+const CATEGORY_COLORS: Record<string, number> = {
+  philosophy: 0x9333ea,    // ม่วงเข้ม - ปรัชญา
+  technical: 0x3b82f6,     // ฟ้า - เทคนิค
+  'ai-tools': 0x22c55e,    // เขียว - เครื่องมือ AI
+  identity: 0xf97316,      // ส้ม - ตัวตน
+  projects: 0xec4899,      // ชมพู - โปรเจค
+  retrospective: 0x06b6d4, // ฟ้าอ่อน - บันทึก
+  methodology: 0xeab308,   // เหลือง - วิธีทำงาน
+  ethics: 0xef4444,        // แดง - จริยธรรม
+};
+
+// Category colors as CSS hex strings for legends
+const CATEGORY_COLORS_CSS: Record<string, string> = {
+  philosophy: '#9333ea',
+  technical: '#3b82f6',
+  'ai-tools': '#22c55e',
+  identity: '#f97316',
+  projects: '#ec4899',
+  retrospective: '#06b6d4',
+  methodology: '#eab308',
+  ethics: '#ef4444',
+};
+
+// Category labels in Thai
+const CATEGORY_LABELS: Record<string, string> = {
+  philosophy: 'ปรัชญา',
+  technical: 'เทคนิค',
+  'ai-tools': 'AI Tools',
+  identity: 'ตัวตน',
+  projects: 'โปรเจค',
+  retrospective: 'บันทึก',
+  methodology: 'วิธีทำงาน',
+  ethics: 'จริยธรรม',
 };
 
 // KlakMath: XXHash for deterministic random
@@ -141,11 +172,16 @@ export function Graph3D() {
   const [fileLoading, setFileLoading] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(false);
 
-  // Type filter state
-  const [typeFilter, setTypeFilter] = useState<Record<string, boolean>>({
-    principle: true,
-    learning: true,
-    retro: true,
+  // Category filter state
+  const [categoryFilter, setCategoryFilter] = useState<Record<string, boolean>>({
+    philosophy: true,
+    technical: true,
+    'ai-tools': true,
+    identity: true,
+    projects: true,
+    retrospective: true,
+    methodology: true,
+    ethics: true,
   });
 
   // HUD controls (state for UI, refs for animation loop)
@@ -211,8 +247,11 @@ export function Graph3D() {
     showAllLinks: false, sphereMode: false
   });
 
-  // Type filter ref for animation loop
-  const typeFilterRef = useRef<Record<string, boolean>>({ principle: true, learning: true, retro: true });
+  // Category filter ref for animation loop
+  const categoryFilterRef = useRef<Record<string, boolean>>({
+    philosophy: true, technical: true, 'ai-tools': true, identity: true,
+    projects: true, retrospective: true, methodology: true, ethics: true
+  });
 
   // Active node ref for animation loop
   const activeNodeRef = useRef<string | null>(null);
@@ -285,15 +324,15 @@ export function Graph3D() {
     }
   }, [camDistance, nodeSize, rotationSpeed, linkOpacity, breathingIntensity, ambientLight, directLight, particleSpeed, showAllLinks, sphereMode]);
 
-  // Sync type filter to ref
+  // Sync category filter to ref
   useEffect(() => {
-    typeFilterRef.current = typeFilter;
-    // Update mesh visibility immediately
+    categoryFilterRef.current = categoryFilter;
+    // Update mesh visibility immediately based on category
     meshesRef.current.forEach(mesh => {
-      const nodeType = (mesh.userData.node as Node).type;
-      mesh.visible = typeFilter[nodeType] ?? true;
+      const nodeCategory = (mesh.userData.node as Node).category || 'methodology';
+      mesh.visible = categoryFilter[nodeCategory] ?? true;
     });
-  }, [typeFilter]);
+  }, [categoryFilter]);
 
   // Track active node (hovered or selected)
   useEffect(() => {
@@ -313,8 +352,9 @@ export function Graph3D() {
       const data = await getGraph();
       const clusters = clusterNodes(data.nodes, data.links || []);
 
-      const processedNodes = data.nodes.map((n: Node) => ({
+      const processedNodes = data.nodes.map((n: any) => ({
         ...n,
+        category: n.category || 'methodology',
         cluster: clusters.get(n.id) || 0,
       }));
 
@@ -388,7 +428,7 @@ export function Graph3D() {
 
     nodes.forEach((node, i) => {
       nodeMap.set(node.id, i);
-      const color = TYPE_COLORS[node.type] || 0x888888;
+      const color = CATEGORY_COLORS[node.category] || 0x888888;
       const material = new THREE.MeshStandardMaterial({
         color,
         metalness: 0.3,
@@ -548,10 +588,10 @@ export function Graph3D() {
       // Slow global rotation
       scene.rotation.y = time * hudRef.current.rotationSpeed;
 
-      // Update link visibility based on active node and type filter
+      // Update link visibility based on active node and category filter
       const activeId = activeNodeRef.current;
       const showAll = hudRef.current.showAllLinks;
-      const currentTypeFilter = typeFilterRef.current;
+      const currentCategoryFilter = categoryFilterRef.current;
 
       let particleIndex = 0;
       const positions = travelingParticles.geometry.attributes.position.array as Float32Array;
@@ -560,11 +600,13 @@ export function Graph3D() {
         const mat = linkData.line.material as THREE.LineBasicMaterial;
         const isConnected = activeId && (linkData.sourceId === activeId || linkData.targetId === activeId);
 
-        // Check if both source and target nodes are visible (based on type filter)
+        // Check if both source and target nodes are visible (based on category filter)
         const sourceNode = meshes[linkData.sourceIdx]?.userData?.node as Node | undefined;
         const targetNode = meshes[linkData.targetIdx]?.userData?.node as Node | undefined;
-        const sourceVisible = sourceNode ? (currentTypeFilter[sourceNode.type] ?? true) : true;
-        const targetVisible = targetNode ? (currentTypeFilter[targetNode.type] ?? true) : true;
+        const sourceCategory = sourceNode?.category || 'methodology';
+        const targetCategory = targetNode?.category || 'methodology';
+        const sourceVisible = currentCategoryFilter[sourceCategory] ?? true;
+        const targetVisible = currentCategoryFilter[targetCategory] ?? true;
         const linkVisible = sourceVisible && targetVisible;
 
         // Get current node positions
@@ -796,27 +838,24 @@ export function Graph3D() {
 
       <div className={styles.legend}>
         {(() => {
-          // Count nodes by type
+          // Count nodes by category
           const counts: Record<string, number> = {};
-          nodes.forEach(n => { counts[n.type] = (counts[n.type] || 0) + 1; });
+          nodes.forEach(n => {
+            const cat = n.category || 'methodology';
+            counts[cat] = (counts[cat] || 0) + 1;
+          });
 
-          const typeConfig = [
-            { key: 'principle', label: 'Principle', color: '#a78bfa' },
-            { key: 'learning', label: 'Learning', color: '#4ade80' },
-            { key: 'retro', label: 'Retro', color: '#60a5fa' },
-          ];
-
-          return typeConfig.map(({ key, label, color }) => {
+          return Object.entries(CATEGORY_COLORS_CSS).map(([key, color]) => {
             const count = counts[key] || 0;
-            if (count === 0) return null;  // Hide types with no data
+            if (count === 0) return null;  // Hide categories with no data
 
             return (
               <button
                 key={key}
-                className={`${styles.legendItem} ${!typeFilter[key] ? styles.legendItemDisabled : ''}`}
-                onClick={() => setTypeFilter(prev => ({ ...prev, [key]: !prev[key] }))}
+                className={`${styles.legendItem} ${!categoryFilter[key] ? styles.legendItemDisabled : ''}`}
+                onClick={() => setCategoryFilter(prev => ({ ...prev, [key]: !prev[key] }))}
                 style={{
-                  opacity: typeFilter[key] ? 1 : 0.4,
+                  opacity: categoryFilter[key] ? 1 : 0.4,
                   cursor: 'pointer',
                   background: 'transparent',
                   border: 'none',
@@ -830,7 +869,7 @@ export function Graph3D() {
                 }}
               >
                 <span className={styles.dot} style={{ background: color }}></span>
-                {label} ({count})
+                {CATEGORY_LABELS[key] || key} ({count})
               </button>
             );
           });
@@ -1018,8 +1057,10 @@ export function Graph3D() {
 
       {(hoveredNode || selectedNode) && !showFilePanel && (
         <div className={styles.tooltip} style={{ maxWidth: '350px' }}>
-          <span className={styles.nodeType}>
-            {selectedNode ? `🔒 ${selectedNode.type}` : hoveredNode?.type}
+          <span className={styles.nodeType} style={{
+            background: CATEGORY_COLORS_CSS[(selectedNode || hoveredNode)?.category || 'methodology'] || '#888'
+          }}>
+            {selectedNode ? `🔒 ${CATEGORY_LABELS[selectedNode.category] || selectedNode.category}` : CATEGORY_LABELS[hoveredNode?.category || ''] || hoveredNode?.category}
           </span>
           <p className={styles.nodeLabel} style={{
             fontSize: '14px',

@@ -6,6 +6,7 @@ import styles from './Graph.module.css';
 interface Node {
   id: string;
   type: string;
+  category: string;
   label: string;
   x?: number;
   y?: number;
@@ -18,10 +19,28 @@ interface Link {
   target: string;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  principle: '#a78bfa',
-  learning: '#4ade80',
-  retro: '#60a5fa',
+// Category colors for knowledge graph visualization (8 categories)
+const CATEGORY_COLORS: Record<string, string> = {
+  philosophy: '#9333ea',    // ม่วงเข้ม - ปรัชญา
+  technical: '#3b82f6',     // ฟ้า - เทคนิค
+  'ai-tools': '#22c55e',    // เขียว - เครื่องมือ AI
+  identity: '#f97316',      // ส้ม - ตัวตน
+  projects: '#ec4899',      // ชมพู - โปรเจค
+  retrospective: '#06b6d4', // ฟ้าอ่อน - บันทึก
+  methodology: '#eab308',   // เหลือง - วิธีทำงาน
+  ethics: '#ef4444',        // แดง - จริยธรรม
+};
+
+// Category labels in Thai
+const CATEGORY_LABELS: Record<string, string> = {
+  philosophy: 'ปรัชญา',
+  technical: 'เทคนิค',
+  'ai-tools': 'AI Tools',
+  identity: 'ตัวตน',
+  projects: 'โปรเจค',
+  retrospective: 'บันทึก',
+  methodology: 'วิธีทำงาน',
+  ethics: 'จริยธรรม',
 };
 
 export function Graph() {
@@ -52,6 +71,7 @@ export function Graph() {
       const centerY = height / 2;
       const initializedNodes = data.nodes.map((n: any) => ({
         ...n,
+        category: n.category || 'methodology', // default if not set
         x: centerX + (Math.random() - 0.5) * 200,
         y: centerY + (Math.random() - 0.5) * 200,
         vx: 0,
@@ -230,11 +250,11 @@ export function Graph() {
         ctx.fill();
       });
 
-      // Draw nodes - fade in with reveal
+      // Draw nodes - fade in with reveal (use category for color)
       const nodeAlpha = Math.min(1, revealProgress * 3); // Nodes appear faster
       localNodes.forEach(node => {
         if (!ctx) return;
-        const color = TYPE_COLORS[node.type] || '#888';
+        const color = CATEGORY_COLORS[node.category] || '#888';
         // Convert hex to rgba
         const r = parseInt(color.slice(1, 3), 16);
         const g = parseInt(color.slice(3, 5), 16);
@@ -285,18 +305,12 @@ export function Graph() {
       </div>
 
       <div className={styles.legend}>
-        <span className={styles.legendItem}>
-          <span className={styles.dot} style={{ background: TYPE_COLORS.principle }}></span>
-          Principle
-        </span>
-        <span className={styles.legendItem}>
-          <span className={styles.dot} style={{ background: TYPE_COLORS.learning }}></span>
-          Learning
-        </span>
-        <span className={styles.legendItem}>
-          <span className={styles.dot} style={{ background: TYPE_COLORS.retro }}></span>
-          Retro
-        </span>
+        {Object.entries(CATEGORY_COLORS).map(([category, color]) => (
+          <span key={category} className={styles.legendItem}>
+            <span className={styles.dot} style={{ background: color }}></span>
+            {CATEGORY_LABELS[category] || category}
+          </span>
+        ))}
       </div>
 
       <div className={styles.canvasWrapper}>
@@ -311,7 +325,9 @@ export function Graph() {
 
       {selectedNode && (
         <div className={styles.nodeInfo}>
-          <span className={styles.nodeType}>{selectedNode.type}</span>
+          <span className={styles.nodeType} style={{ background: CATEGORY_COLORS[selectedNode.category] || '#888' }}>
+            {CATEGORY_LABELS[selectedNode.category] || selectedNode.category}
+          </span>
           <p className={styles.nodeLabel}>{selectedNode.label}</p>
         </div>
       )}

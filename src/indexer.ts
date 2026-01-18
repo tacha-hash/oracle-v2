@@ -20,6 +20,100 @@ import { Database } from 'bun:sqlite';
 import { ChromaMcpClient } from './chroma-mcp.js';
 import type { OracleDocument, OracleMetadata, IndexerConfig } from './types.js';
 
+// Category definitions for knowledge graph visualization
+export type KnowledgeCategory =
+  | 'philosophy'    // ปรัชญา - oracle principles, nothing-deleted, form-and-formless
+  | 'technical'     // เทคนิค - api, debugging, installation, tools
+  | 'ai-tools'      // เครื่องมือ AI - kie.ai, flux, seedance
+  | 'identity'      // ตัวตน - le, arthur, oracle-family, origin-story
+  | 'projects'      // โปรเจค - oracle-v2, louracle, storyboard
+  | 'retrospective' // บันทึก - session, milestone
+  | 'methodology'   // วิธีทำงาน - vibecoding, multi-agent, delegation
+  | 'ethics';       // จริยธรรม - ai-ethics, transparency, safety
+
+// Concept-to-category mapping
+const CATEGORY_MAPPINGS: Record<KnowledgeCategory, string[]> = {
+  philosophy: [
+    'oracle-philosophy', 'philosophy', 'nothing-deleted', 'form-and-formless',
+    'kalama-sutta', 'mother-child', 'dialogue', 'questioning', 'emergence',
+    'civilization-mirror', 'external-brain', 'patterns', 'meta-learning',
+    'distributed-consciousness', 'growth', 'learning'
+  ],
+  technical: [
+    'api', 'debugging', 'installation', 'troubleshooting', 'path-issues',
+    'macos', 'cli-tools', 'ghq', 'symlink', 'github', 'gh-cli', 'security',
+    'endpoint-pattern', 'git', 'code', 'file', 'config', 'test', 'debug',
+    'error', 'fix', 'refactor'
+  ],
+  'ai-tools': [
+    'kie.ai', 'flux-kontext', 'seedance', 'image-generation', 'video-generation',
+    'haiku', 'claude', 'mcp', 'ai-assisted'
+  ],
+  identity: [
+    'le', 'louis', 'arthur', 'oracle-family', 'origin-story', 'le-birth',
+    'louis-profile', 'identity', 'first-contact', 'first-meeting', 'louracle',
+    'nats-brain-oracle'
+  ],
+  projects: [
+    'oracle-v2', 'storyboard-web', 'project-management', 'incubate',
+    'oracle-pattern', 'contribution', 'project', 'yupp', 'gesture-dj',
+    'kie-ai', 'oracle-visualizer', 'sales-tracker', 'mediapipe', 'seedance',
+    'flux-kontext', 'deployment', 'railway', 'vercel'
+  ],
+  retrospective: [
+    'retrospective', 'first-session', 'full-session', 'milestone', 'session',
+    'exploration'
+  ],
+  methodology: [
+    'vibecoding', 'multi-agent', 'best-practice', 'delegation', 'cost-efficiency',
+    'pattern', 'workflow', 'plan', 'task', 'issue', 'feature', 'ai-collaboration'
+  ],
+  ethics: [
+    'ai-ethics', 'ethics', 'transparency', 'privacy', 'ai-human-trust',
+    'responsibility', 'partnership', 'ai-safety', 'power-concentration',
+    'decentralization', 'federated-learning'
+  ]
+};
+
+/**
+ * Classify document into a category based on its concepts
+ * Returns the category with most matching concepts
+ */
+function classifyCategory(concepts: string[]): KnowledgeCategory {
+  const scores: Record<KnowledgeCategory, number> = {
+    philosophy: 0,
+    technical: 0,
+    'ai-tools': 0,
+    identity: 0,
+    projects: 0,
+    retrospective: 0,
+    methodology: 0,
+    ethics: 0
+  };
+
+  for (const concept of concepts) {
+    const lowerConcept = concept.toLowerCase();
+    for (const [category, keywords] of Object.entries(CATEGORY_MAPPINGS)) {
+      if (keywords.some(k => lowerConcept.includes(k) || k.includes(lowerConcept))) {
+        scores[category as KnowledgeCategory]++;
+      }
+    }
+  }
+
+  // Find category with highest score
+  let maxScore = 0;
+  let bestCategory: KnowledgeCategory = 'methodology'; // default
+
+  for (const [category, score] of Object.entries(scores)) {
+    if (score > maxScore) {
+      maxScore = score;
+      bestCategory = category as KnowledgeCategory;
+    }
+  }
+
+  return bestCategory;
+}
+
 export class OracleIndexer {
   private db: Database;
   private chromaClient: ChromaMcpClient | null = null;
@@ -41,6 +135,7 @@ export class OracleIndexer {
         type TEXT NOT NULL,
         source_file TEXT NOT NULL,
         concepts TEXT NOT NULL,
+        category TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         indexed_at INTEGER NOT NULL
@@ -48,6 +143,7 @@ export class OracleIndexer {
 
       CREATE INDEX IF NOT EXISTS idx_type ON oracle_documents(type);
       CREATE INDEX IF NOT EXISTS idx_source ON oracle_documents(source_file);
+      CREATE INDEX IF NOT EXISTS idx_category ON oracle_documents(category);
 
       -- FTS5 for keyword search (with Porter stemmer for tire/tired matching)
       CREATE VIRTUAL TABLE IF NOT EXISTS oracle_fts USING fts5(
@@ -201,12 +297,14 @@ export class OracleIndexer {
       // Main document for this principle/section
       const id = `resonance_${filename.replace('.md', '')}_${index}`;
       const extractedConcepts = this.extractConcepts(title, body);
+      const mergedConcepts = this.mergeConceptsWithTags(extractedConcepts, fileTags);
       documents.push({
         id,
         type: 'principle',
         source_file: sourceFile,
         content: `${title}: ${body}`,
-        concepts: this.mergeConceptsWithTags(extractedConcepts, fileTags),
+        concepts: mergedConcepts,
+        category: classifyCategory(mergedConcepts),
         created_at: now,
         updated_at: now
       });
@@ -217,12 +315,14 @@ export class OracleIndexer {
         bullets.forEach((bullet, bulletIndex) => {
           const bulletText = bullet.replace(/^[-*]\s+/, '').trim();
           const bulletConcepts = this.extractConcepts(bulletText);
+          const bulletMergedConcepts = this.mergeConceptsWithTags(bulletConcepts, fileTags);
           documents.push({
             id: `${id}_sub_${bulletIndex}`,
             type: 'principle',
             source_file: sourceFile,
             content: bulletText,
-            concepts: this.mergeConceptsWithTags(bulletConcepts, fileTags),
+            concepts: bulletMergedConcepts,
+            category: classifyCategory(bulletMergedConcepts),
             created_at: now,
             updated_at: now
           });
@@ -259,7 +359,6 @@ export class OracleIndexer {
    * Now reads frontmatter tags and inherits them to all chunks
    */
   private parseLearningFile(filename: string, content: string): OracleDocument[] {
-    const documents: OracleDocument[] = [];
     const sourceFile = `ψ/memory/learnings/${filename}`;
     const now = Date.now();
 
@@ -268,46 +367,31 @@ export class OracleIndexer {
 
     // Extract title from frontmatter or filename
     const titleMatch = content.match(/^title:\s*(.+)$/m);
-    const title = titleMatch ? titleMatch[1] : filename.replace('.md', '');
+    const title = titleMatch ? titleMatch[1].replace(/^#\s*/, '') : filename.replace('.md', '');
 
-    // Split by ## headers (patterns)
-    const sections = content.split(/^##\s+/m).filter(s => s.trim());
+    // Clean content (remove frontmatter for display)
+    const cleanContent = content.replace(/^---[\s\S]*?---\n*/m, '').trim();
 
-    sections.forEach((section, index) => {
-      const lines = section.split('\n');
-      const sectionTitle = lines[0].trim();
-      const body = lines.slice(1).join('\n').trim();
+    // Extract first paragraph or summary as label
+    const firstPara = cleanContent.split(/\n\n/)[0]?.replace(/^#.*\n/m, '').trim() || title;
+    const label = firstPara.slice(0, 100) + (firstPara.length > 100 ? '...' : '');
 
-      if (!body) return;
+    // Extract concepts from entire file content
+    const extractedConcepts = this.extractConcepts(title, cleanContent);
+    const mergedConcepts = this.mergeConceptsWithTags(extractedConcepts, fileTags);
 
-      const id = `learning_${filename.replace('.md', '')}_${index}`;
-      const extractedConcepts = this.extractConcepts(sectionTitle, body);
-      documents.push({
-        id,
-        type: 'learning',
-        source_file: sourceFile,
-        content: `${title} - ${sectionTitle}: ${body}`,
-        concepts: this.mergeConceptsWithTags(extractedConcepts, fileTags),
-        created_at: now,
-        updated_at: now
-      });
-    });
-
-    // If no sections, treat whole file as one document
-    if (documents.length === 0) {
-      const extractedConcepts = this.extractConcepts(title, content);
-      documents.push({
-        id: `learning_${filename.replace('.md', '')}`,
-        type: 'learning',
-        source_file: sourceFile,
-        content: content,
-        concepts: this.mergeConceptsWithTags(extractedConcepts, fileTags),
-        created_at: now,
-        updated_at: now
-      });
-    }
-
-    return documents;
+    // One document per file (no section splitting)
+    return [{
+      id: `learning_${filename.replace('.md', '')}`,
+      type: 'learning',
+      source_file: sourceFile,
+      content: cleanContent.slice(0, 500), // First 500 chars for preview
+      label: label,
+      concepts: mergedConcepts,
+      category: classifyCategory(mergedConcepts),
+      created_at: now,
+      updated_at: now
+    }];
   }
 
   /**
@@ -357,38 +441,39 @@ export class OracleIndexer {
    * Now reads frontmatter tags and inherits them to all chunks
    */
   private parseRetroFile(relativePath: string, content: string): OracleDocument[] {
-    const documents: OracleDocument[] = [];
     const now = Date.now();
+    const filename = path.basename(relativePath, '.md');
 
     // Extract file-level tags from frontmatter
     const fileTags = this.parseFrontmatterTags(content);
 
-    // Extract key sections (AI Diary, What I Learned, etc.)
-    const sections = content.split(/^##\s+/m).filter(s => s.trim());
+    // Extract title from frontmatter or filename
+    const titleMatch = content.match(/^title:\s*(.+)$/m);
+    const title = titleMatch ? titleMatch[1].replace(/^#\s*/, '') : filename;
 
-    sections.forEach((section, index) => {
-      const lines = section.split('\n');
-      const sectionTitle = lines[0].trim();
-      const body = lines.slice(1).join('\n').trim();
+    // Clean content (remove frontmatter)
+    const cleanContent = content.replace(/^---[\s\S]*?---\n*/m, '').trim();
 
-      if (!body || body.length < 50) return; // Skip short sections
+    // Extract first meaningful line as label
+    const firstLine = cleanContent.split('\n').find(l => l.trim() && !l.startsWith('#'))?.trim() || title;
+    const label = firstLine.slice(0, 100) + (firstLine.length > 100 ? '...' : '');
 
-      const filename = path.basename(relativePath, '.md');
-      const id = `retro_${filename}_${index}`;
-      const extractedConcepts = this.extractConcepts(sectionTitle, body);
+    // Extract concepts from entire file
+    const extractedConcepts = this.extractConcepts(title, cleanContent);
+    const mergedConcepts = this.mergeConceptsWithTags(extractedConcepts, fileTags);
 
-      documents.push({
-        id,
-        type: 'retro',
-        source_file: relativePath,
-        content: `${sectionTitle}: ${body}`,
-        concepts: this.mergeConceptsWithTags(extractedConcepts, fileTags),
-        created_at: now,
-        updated_at: now
-      });
-    });
-
-    return documents;
+    // One document per file
+    return [{
+      id: `retro_${filename}`,
+      type: 'retro',
+      source_file: relativePath,
+      content: cleanContent.slice(0, 500),
+      label: label,
+      concepts: mergedConcepts,
+      category: classifyCategory(mergedConcepts),
+      created_at: now,
+      updated_at: now
+    }];
   }
 
   /**
@@ -455,8 +540,8 @@ export class OracleIndexer {
     // Prepare statements
     const insertMeta = this.db.prepare(`
       INSERT OR REPLACE INTO oracle_documents
-      (id, type, source_file, concepts, created_at, updated_at, indexed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (id, type, source_file, concepts, category, created_at, updated_at, indexed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertFts = this.db.prepare(`
@@ -476,6 +561,7 @@ export class OracleIndexer {
         doc.type,
         doc.source_file,
         JSON.stringify(doc.concepts),
+        doc.category || 'methodology',
         doc.created_at,
         doc.updated_at,
         now
@@ -494,7 +580,8 @@ export class OracleIndexer {
       metadatas.push({
         type: doc.type,
         source_file: doc.source_file,
-        concepts: doc.concepts.join(',')  // Convert array to string for ChromaDB
+        concepts: doc.concepts.join(','),  // Convert array to string for ChromaDB
+        category: doc.category || 'methodology'
       });
     }
 

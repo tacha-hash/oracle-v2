@@ -450,7 +450,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
       const { total } = countStmt.get() as { total: number };
 
       stmt = db.prepare(`
-        SELECT d.id, d.type, d.source_file, d.concepts, MAX(d.indexed_at) as indexed_at, f.content
+        SELECT d.id, d.type, d.source_file, d.concepts, d.category, MAX(d.indexed_at) as indexed_at, f.content
         FROM oracle_documents d
         JOIN oracle_fts f ON d.id = f.id
         GROUP BY d.source_file
@@ -460,6 +460,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
       const results = stmt.all(limit, offset).map((row: any) => ({
         id: row.id,
         type: row.type,
+        category: row.category || 'methodology',
         content: (row.content || '').substring(0, 500),
         source_file: row.source_file,
         concepts: row.concepts ? JSON.parse(row.concepts) : [],
@@ -472,7 +473,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
       const { total } = countStmt.get(type) as { total: number };
 
       stmt = db.prepare(`
-        SELECT d.id, d.type, d.source_file, d.concepts, MAX(d.indexed_at) as indexed_at, f.content
+        SELECT d.id, d.type, d.source_file, d.concepts, d.category, MAX(d.indexed_at) as indexed_at, f.content
         FROM oracle_documents d
         JOIN oracle_fts f ON d.id = f.id
         WHERE d.type = ?
@@ -483,6 +484,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
       const results = stmt.all(type, limit, offset).map((row: any) => ({
         id: row.id,
         type: row.type,
+        category: row.category || 'methodology',
         content: (row.content || '').substring(0, 500),
         source_file: row.source_file,
         concepts: JSON.parse(row.concepts || '[]'),
@@ -604,31 +606,23 @@ export function handleStats(dbPath: string) {
 
 /**
  * Get knowledge graph data
- * Limited to principles + sample learnings to avoid O(n²) explosion
+ * All document types included (principles, learnings, retros)
+ * With 1 file = 1 doc indexing, total nodes are manageable
  */
 export function handleGraph() {
-  // Only get principles (always) + sample learnings (limited)
-  // This keeps graph manageable: ~163 principles + ~100 learnings = ~263 nodes max
-  const principles = db.prepare(`
-    SELECT id, type, source_file, concepts
+  // Get all document types - with clean indexing (1 file = 1 doc), this is manageable
+  const docs = db.prepare(`
+    SELECT id, type, source_file, concepts, category
     FROM oracle_documents
-    WHERE type = 'principle'
-  `).all() as { id: string; type: string; source_file: string; concepts: string }[];
+    ORDER BY type, source_file
+  `).all() as { id: string; type: string; source_file: string; concepts: string; category: string | null }[];
 
-  const learnings = db.prepare(`
-    SELECT id, type, source_file, concepts
-    FROM oracle_documents
-    WHERE type = 'learning'
-    ORDER BY RANDOM()
-    LIMIT 100
-  `).all() as { id: string; type: string; source_file: string; concepts: string }[];
-
-  const docs = [...principles, ...learnings];
-
-  // Build nodes
+  // Build nodes with category and label for graph visualization
   const nodes = docs.map(doc => ({
     id: doc.id,
     type: doc.type,
+    category: doc.category || 'methodology', // default category
+    label: doc.source_file.split('/').pop()?.replace('.md', '').replace(/-/g, ' ') || doc.id,
     source_file: doc.source_file,
     concepts: JSON.parse(doc.concepts || '[]')
   }));
